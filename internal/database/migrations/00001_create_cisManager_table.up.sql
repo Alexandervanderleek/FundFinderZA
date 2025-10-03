@@ -1,0 +1,4 @@
+CREATE TABLE cisManagers (
+	id SERIAL PRIMARY KEY,
+	name VARCHAR(255) NOT NULL
+);
