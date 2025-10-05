@@ -2,12 +2,37 @@ package main
 
 import (
 	"fmt"
+	"log"
+	"os"
+	"strconv"
 	"time"
 
+	"github.com/Alexandervanderleek/FundFinderZA/internal/database"
 	"github.com/Alexandervanderleek/FundFinderZA/internal/scraper"
+	"github.com/joho/godotenv"
 )
 
 func main() {
+
+	if err := godotenv.Load(); err != nil {
+		log.Println("Could not load env file.")
+	}
+
+	port, _ := strconv.Atoi(os.Getenv("DB_PORT"))
+
+	dbConfig := &database.DbConfig{
+		Host:     os.Getenv("DB_HOST"),
+		Port:     port,
+		User:     os.Getenv("DB_USER"),
+		Password: os.Getenv("DB_PASSWORD"),
+		DBName:   os.Getenv("DB_NAME"),
+	}
+
+	newDb, dbErr := database.NewDB(dbConfig)
+
+	if dbErr != nil {
+		log.Println("Failed to connect to the database!")
+	}
 
 	newClient := scraper.NewClient(
 		scraper.WithRetries(1),
@@ -22,6 +47,10 @@ func main() {
 	}
 
 	managers, err := scraper.ScrapeCISMangers(byteBody)
+
+	if newDb.SaveCisManagers(managers) != nil {
+		log.Println("Failed to store the managers")
+	}
 
 	if err != nil {
 		fmt.Println("Error scraping managers:", err)

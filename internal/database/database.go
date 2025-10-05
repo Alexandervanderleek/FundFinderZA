@@ -1,4 +1,4 @@
-package internal
+package database
 
 import (
 	"fmt"
@@ -21,7 +21,7 @@ type DbConfig struct {
 	SSLMode  string
 }
 
-func NewDB(config DbConfig) (*DB, error) {
+func NewDB(config *DbConfig) (*DB, error) {
 	connStr := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
 		config.Host, config.Port, config.User, config.Password, config.DBName, config.SSLMode)
 
