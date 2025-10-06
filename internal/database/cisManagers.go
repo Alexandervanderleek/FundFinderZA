@@ -19,8 +19,12 @@ func (db *DB) GetAllCisManagers() ([]*models.CISManager, error) {
 }
 
 func (db *DB) SaveCisManagers(cisManager []*models.CISManager) error {
-	query := `INSERT INTO cismanagers (id, name)
-			  VALUES (:id, :name)`
+	query := `
+		INSERT INTO cismanagers (id, name)
+		VALUES (:id, :name)
+		ON CONFLICT (id) DO UPDATE
+		SET name = EXCLUDED.name
+	`
 	_, err := db.conn.NamedExec(query, cisManager)
 
 	return err
