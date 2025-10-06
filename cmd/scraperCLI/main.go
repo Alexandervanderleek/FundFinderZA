@@ -32,7 +32,8 @@ func main() {
 	newDb, dbErr := database.NewDB(dbConfig)
 
 	if dbErr != nil {
-		log.Println("Failed to connect to the database!")
+		log.Printf("Failed to connect to the database: %s", dbErr)
+		return
 	}
 
 	newClient := scraper.NewClient(
