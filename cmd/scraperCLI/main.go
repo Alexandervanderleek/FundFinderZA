@@ -26,6 +26,7 @@ func main() {
 		User:     os.Getenv("DB_USER"),
 		Password: os.Getenv("DB_PASSWORD"),
 		DBName:   os.Getenv("DB_NAME"),
+		SSLMode:  os.Getenv("SSLMode"),
 	}
 
 	newDb, dbErr := database.NewDB(dbConfig)
@@ -48,8 +49,8 @@ func main() {
 
 	managers, err := scraper.ScrapeCISMangers(byteBody)
 
-	if newDb.SaveCisManagers(managers) != nil {
-		log.Println("Failed to store the managers")
+	if err := newDb.SaveCisManagers(managers); err != nil {
+		log.Println("Failed to store the managers %w", err)
 	}
 
 	if err != nil {
