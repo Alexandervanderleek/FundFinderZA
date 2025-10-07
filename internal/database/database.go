@@ -29,11 +29,11 @@ func NewDB(config *DbConfig) (*DB, error) {
 	conn, err := sqlx.Open("postgres", connStr)
 
 	if err != nil {
-		return nil, fmt.Errorf("failed to open database connection: %w", err)
+		return nil, fmt.Errorf("error opening database connection: %s", err)
 	}
 
 	if err := conn.Ping(); err != nil {
-		return nil, fmt.Errorf("failed to ping datbase %w", err)
+		return nil, fmt.Errorf("error ping'ing database %s", err)
 	}
 
 	return &DB{conn: conn}, nil

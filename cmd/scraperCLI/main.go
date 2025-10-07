@@ -1,10 +1,12 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"log"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/Alexandervanderleek/FundFinderZA/internal/database"
@@ -14,11 +16,26 @@ import (
 
 func main() {
 
-	if err := godotenv.Load(); err != nil {
-		log.Println("Could not load env file.")
+	scrapeManco := flag.Bool("manco", false, "Scrape & Save CIS managers only")
+	scrapeFunds := flag.Bool("funds", false, "Scrape & Save funds for saved managers")
+	mancoIDs := flag.String("manco-ids", "", "Comman-seperated list of manco Ids to scrape and update.")
+
+	flag.Parse()
+
+	if !*scrapeFunds && !*scrapeManco {
+		log.Println("Usage: scraperCLI -manco | -funds [-manco-ids=0303,0037]")
+		flag.PrintDefaults()
+		os.Exit(1)
 	}
 
-	port, _ := strconv.Atoi(os.Getenv("DB_PORT"))
+	if err := godotenv.Load(); err != nil {
+		log.Fatalln("Failed to load env file")
+	}
+
+	port, err := strconv.Atoi(os.Getenv("DB_PORT"))
+	if err != nil {
+		log.Fatalln("Failed to parse database port")
+	}
 
 	dbConfig := &database.DbConfig{
 		Host:     os.Getenv("DB_HOST"),
@@ -29,37 +46,102 @@ func main() {
 		SSLMode:  os.Getenv("SSLMode"),
 	}
 
-	newDb, dbErr := database.NewDB(dbConfig)
-
-	if dbErr != nil {
-		log.Printf("Failed to connect to the database: %s", dbErr)
-		return
+	newDb, err := database.NewDB(dbConfig)
+	if err != nil {
+		log.Fatalf("Failed to connect to the database: %s", err)
 	}
 
-	newClient := scraper.NewClient(
+	httpClient := scraper.NewClient(
 		scraper.WithRetries(1),
 		scraper.WithUserAgent("MyCustomUserAgent/1.0"),
 		scraper.WithTimeout(30*time.Second))
 
-	byteBody, err := newClient.Get("https://funds.profiledata.co.za/aci/ASISA/HistPriceLookUp.aspx")
+	if *scrapeManco {
+		if err := scrapeFundManagers(httpClient, newDb); err != nil {
+			log.Fatalf("Failed to scrape fund managers: %s", err)
+		}
+	}
+
+	if *scrapeFunds {
+		if err := scrapeFundsForMangers(httpClient, newDb, mancoIDs); err != nil {
+			log.Fatalf("Failed to scrape funds for managers: %s", err)
+		}
+	}
+}
+
+func scrapeFundManagers(client *scraper.Client, db *database.DB) error {
+	log.Println("Fetching CIS managers...")
+
+	byteBody, err := client.Get("https://funds.profiledata.co.za/aci/ASISA/HistPriceLookUp.aspx")
+	if err != nil {
+		return fmt.Errorf("error fetching page: %s", err)
+	}
+
+	cisMangers, err := scraper.ScrapeCISMangers(byteBody)
 
 	if err != nil {
-		fmt.Println("Error fetching URL:", err)
-		return
+		return fmt.Errorf("error scraping managers from page %s", err)
 	}
 
-	managers, err := scraper.ScrapeCISMangers(byteBody)
-
-	if err := newDb.SaveCisManagers(managers); err != nil {
-		log.Println("Failed to store the managers %w", err)
+	if err := db.SaveCISManagers(cisMangers); err != nil {
+		return fmt.Errorf("error saving scraped cisManger: %s", err)
 	}
 
-	if err != nil {
-		fmt.Println("Error scraping managers:", err)
-		return
+	log.Printf("Succesfully saved %d fund managers\n", len(cisMangers))
+	return nil
+}
+
+func scrapeFundsForMangers(client *scraper.Client, db *database.DB, mancoIds *string) error {
+	log.Println("Fetching funds for managers...")
+
+	var managerIdsToProcess []int
+	if *mancoIds != "" {
+		idStrs := strings.SplitSeq(*mancoIds, ",")
+		for idStr := range idStrs {
+			id, err := strconv.Atoi(idStr)
+			if err != nil {
+				return fmt.Errorf("error invalid manco id: %s : %w", idStr, err)
+			}
+			managerIdsToProcess = append(managerIdsToProcess, id)
+		}
+		log.Printf("Processing funds for %d specific managers\n", len(managerIdsToProcess))
+	} else {
+		mancoMangers, err := db.GetAllCISManagers()
+		if err != nil {
+			return fmt.Errorf("error getting cismanagers from db: %s", err)
+		}
+
+		for _, manager := range mancoMangers {
+			managerIdsToProcess = append(managerIdsToProcess, manager.ID)
+		}
+		log.Printf("Processing funds for all %d managers\n", len(managerIdsToProcess))
 	}
 
-	for _, manager := range managers {
-		fmt.Println("Manager:", manager.Name, "ID:", manager.ID)
+	for i, managerID := range managerIdsToProcess {
+		log.Printf("[%d/%d] Processing manager ID: %d \n", i+1, len(managerIdsToProcess), managerID)
+
+		url := fmt.Sprintf("https://funds.profiledata.co.za/aci/ASISA/HistPriceLookUp.aspx?MANCO_ID=%04d", managerID)
+
+		fundHTML, err := client.Get(url)
+
+		if err != nil {
+			return fmt.Errorf("error fetching html %s", err)
+		}
+
+		funds, err := scraper.ScrapeFunds(fundHTML, managerID)
+		if err != nil {
+			return fmt.Errorf("error scraping funds from html for ID - %d : %s", managerID, err)
+		}
+
+		if len(funds) > 0 {
+			if err := db.SaveFunds(funds); err != nil {
+				return fmt.Errorf("error saving funds : %s", err)
+			}
+		} else {
+			log.Printf("No funds found")
+		}
+
+		time.Sleep(500 * time.Millisecond)
 	}
+	return nil
 }

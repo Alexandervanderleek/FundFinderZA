@@ -6,7 +6,7 @@ import (
 	"github.com/Alexandervanderleek/FundFinderZA/internal/models"
 )
 
-func (db *DB) GetAllCisManagers() ([]*models.CISManager, error) {
+func (db *DB) GetAllCISManagers() ([]*models.CISManager, error) {
 	var cisMangers []*models.CISManager
 
 	err := db.conn.Select(&cisMangers, "SELECT * FROM cisManagers")
@@ -18,9 +18,9 @@ func (db *DB) GetAllCisManagers() ([]*models.CISManager, error) {
 	return cisMangers, nil
 }
 
-func (db *DB) SaveCisManagers(cisManager []*models.CISManager) error {
+func (db *DB) SaveCISManagers(cisManager []*models.CISManager) error {
 	query := `
-		INSERT INTO cismanagers (id, name)
+		INSERT INTO cisManagers (id, name)
 		VALUES (:id, :name)
 		ON CONFLICT (id) DO UPDATE
 		SET name = EXCLUDED.name
