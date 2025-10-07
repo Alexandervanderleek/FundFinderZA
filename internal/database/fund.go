@@ -8,9 +8,9 @@ func (db *DB) SaveFunds(funds []*models.Fund) error {
 		INSERT INTO funds (trust_no, name, secondary_name, manager_id)
 		VALUES (:trust_no, :name, :secondary_name, :manager_id)
 		ON CONFLICT (trust_no) DO UPDATE
-		SET name = EXCLUDE.name
-		SET secondary_name = EXCLUDE.secondary_name
-		SET manager_id = EXCLUDE.manager_id
+		SET name = EXCLUDE.name,
+		 	secondary_name = EXCLUDE.secondary_name,
+			manager_id = EXCLUDE.manager_id
 		`
 
 	_, err := db.conn.NamedExec(query, funds)
