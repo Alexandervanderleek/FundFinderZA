@@ -120,15 +120,25 @@ func scrapeFundsForMangers(client *scraper.Client, db *database.DB, mancoIds *st
 	for i, managerID := range managerIdsToProcess {
 		log.Printf("[%d/%d] Processing manager ID: %d \n", i+1, len(managerIdsToProcess), managerID)
 
-		url := fmt.Sprintf("https://funds.profiledata.co.za/aci/ASISA/HistPriceLookUp.aspx?MANCO_ID=%04d", managerID)
-
-		fundHTML, err := client.Get(url)
+		initialHTML, err := client.Get("https://funds.profiledata.co.za/aci/ASISA/HistPriceLookUp.aspx")
 
 		if err != nil {
-			return fmt.Errorf("error fetching html %s", err)
+			return fmt.Errorf("error fetching initial page: %s", err)
 		}
 
-		funds, err := scraper.ScrapeFunds(fundHTML, managerID)
+		viewState, err := scraper.ExtractViewStateData(initialHTML)
+		if err != nil {
+			return fmt.Errorf("error extracting the view state: %s", err)
+		}
+
+		formData := scraper.BuildFormData(viewState, managerID)
+
+		fundHtml, err := client.Post("https://funds.profiledata.co.za/aci/ASISA/HistPriceLookUp.aspx", formData)
+		if err != nil {
+			return fmt.Errorf("error posting form for manager: %s", err)
+		}
+
+		funds, err := scraper.ScrapeFunds(fundHtml, managerID)
 		if err != nil {
 			return fmt.Errorf("error scraping funds from html for ID - %d : %s", managerID, err)
 		}
@@ -141,7 +151,8 @@ func scrapeFundsForMangers(client *scraper.Client, db *database.DB, mancoIds *st
 			log.Printf("No funds found")
 		}
 
-		time.Sleep(1000 * time.Millisecond)
+		time.Sleep(1 * time.Second)
 	}
+	log.Println("Completed the scraping of funds")
 	return nil
 }

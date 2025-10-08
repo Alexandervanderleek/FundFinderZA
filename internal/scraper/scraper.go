@@ -3,11 +3,45 @@ package scraper
 import (
 	"bytes"
 	"fmt"
+	"net/url"
 	"strconv"
 
 	"github.com/Alexandervanderleek/FundFinderZA/internal/models"
 	"github.com/PuerkitoBio/goquery"
 )
+
+type ViewStateData struct {
+	ViewState          string
+	ViewStateGenerator string
+	EventValidation    string
+}
+
+func ExtractViewStateData(html []byte) (*ViewStateData, error) {
+	doc, err := goquery.NewDocumentFromReader(bytes.NewReader(html))
+
+	if err != nil {
+		return nil, fmt.Errorf("error when parsing html %s", err)
+	}
+
+	viewState, _ := doc.Find("input[name='__VIEWSTATE']").Attr("value")
+	viewStateGen, _ := doc.Find("input[name='__VIEWSTATEGENERATOR']").Attr("value")
+	eventValidation, _ := doc.Find("input[name='__EVENTVALIDATION']").Attr("value")
+
+	return &ViewStateData{
+		ViewState:          viewState,
+		ViewStateGenerator: viewStateGen,
+		EventValidation:    eventValidation,
+	}, nil
+}
+
+func BuildFormData(viewStateDate *ViewStateData, mancoId int) url.Values {
+	formData := url.Values{}
+	formData.Set("__VIEWSTATE", viewStateDate.ViewState)
+	formData.Set("__VIEWSTATEGENERATOR", viewStateDate.ViewStateGenerator)
+	formData.Set("__EVENTVALIDATION", viewStateDate.EventValidation)
+	formData.Set("MANCO_ID", fmt.Sprintf("%04d", mancoId))
+	return formData
+}
 
 func ScrapeCISMangers(html []byte) ([]*models.CISManager, error) {
 
