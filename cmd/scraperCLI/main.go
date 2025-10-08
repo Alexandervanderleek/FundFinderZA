@@ -141,7 +141,7 @@ func scrapeFundsForMangers(client *scraper.Client, db *database.DB, mancoIds *st
 			log.Printf("No funds found")
 		}
 
-		time.Sleep(500 * time.Millisecond)
+		time.Sleep(1000 * time.Millisecond)
 	}
 	return nil
 }

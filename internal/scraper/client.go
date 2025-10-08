@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
+	"strings"
 	"time"
 )
 
@@ -53,6 +55,20 @@ func NewClient(options ...ClientOption) *Client {
 	return client
 }
 
+func (c *Client) Post(url string, formData url.Values) ([]byte, error) {
+	req, err := http.NewRequest("POST", url, strings.NewReader(formData.Encode()))
+
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("User-Agent", c.userAgent)
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Referer", url)
+
+	return c.doRequest(req)
+}
+
 func (c *Client) Get(url string) ([]byte, error) {
 	req, err := http.NewRequest("GET", url, nil)
 
@@ -62,11 +78,14 @@ func (c *Client) Get(url string) ([]byte, error) {
 
 	req.Header.Set("User-Agent", c.userAgent)
 
+	return c.doRequest(req)
+}
+
+func (c *Client) doRequest(req *http.Request) ([]byte, error) {
 	var lastErr error
 	var lastStatusCode int
 
 	for i := 0; i < c.retries; i++ {
-
 		resp, err := c.httpClient.Do(req)
 
 		if err != nil {
@@ -75,8 +94,11 @@ func (c *Client) Get(url string) ([]byte, error) {
 				time.Sleep(time.Duration(i+1) * time.Second)
 				continue
 			}
+			break
 		}
 		defer resp.Body.Close()
+
+		lastStatusCode = resp.StatusCode
 
 		if resp.StatusCode == http.StatusOK {
 			bytes, err := io.ReadAll(resp.Body)
@@ -88,12 +110,13 @@ func (c *Client) Get(url string) ([]byte, error) {
 			return bytes, nil
 		}
 
-		if i < c.retries {
+		if i < c.retries-1 {
 			time.Sleep(time.Duration(i+1) * time.Second)
 		}
 	}
+
 	if lastErr != nil {
-		return nil, fmt.Errorf("failed to fetch url %s after %d retries: - last error: %w", url, c.retries, lastErr)
+		return nil, fmt.Errorf("failed to fetch after %d retries: - last error: %w", c.retries, lastErr)
 	}
-	return nil, fmt.Errorf("failed to fetch url %s after %d retries: final status %d", url, c.retries, lastStatusCode)
+	return nil, fmt.Errorf("failed to fetch after %d retries: final status %d", c.retries, lastStatusCode)
 }
