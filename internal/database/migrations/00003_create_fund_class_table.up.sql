@@ -4,7 +4,7 @@ CREATE TABLE fund_classes (
     id SERIAL PRIMARY KEY,
     fund_id INT NOT NULL REFERENCES funds(trust_no),
     class_name VARCHAR(50) NOT NULL,
-    add_fee BIT,
+    add_fee BOOLEAN,
     target_market target_market_type,
     max_init_fee DECIMAL(5,2),
     category VARCHAR(255),

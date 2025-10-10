@@ -18,12 +18,13 @@ func main() {
 
 	scrapeManco := flag.Bool("manco", false, "Scrape & Save CIS managers only")
 	scrapeFunds := flag.Bool("funds", false, "Scrape & Save funds for saved managers")
+	scrapePrices := flag.Bool("prices", false, "Scrape & Save all fund prices per class of fund")
 	mancoIDs := flag.String("manco-ids", "", "Comman-seperated list of manco Ids to scrape and update.")
 
 	flag.Parse()
 
-	if !*scrapeFunds && !*scrapeManco {
-		log.Println("Usage: scraperCLI -manco | -funds [-manco-ids=0303,0037]")
+	if !*scrapeFunds && !*scrapeManco && !*scrapePrices {
+		log.Println("Usage: scraperCLI -manco | -funds | -prices [-manco-ids=0303,0037]")
 		flag.PrintDefaults()
 		os.Exit(1)
 	}
@@ -65,6 +66,12 @@ func main() {
 	if *scrapeFunds {
 		if err := scrapeFundsForMangers(httpClient, newDb, mancoIDs); err != nil {
 			log.Fatalf("Failed to scrape funds for managers: %s", err)
+		}
+	}
+
+	if *scrapePrices {
+		if err := ScrapeHistoricalPrices(httpClient, newDb); err != nil {
+			log.Fatalf("Failed to scrape historical prices: %s", err)
 		}
 	}
 }
@@ -155,4 +162,82 @@ func scrapeFundsForMangers(client *scraper.Client, db *database.DB, mancoIds *st
 	}
 	log.Println("Completed the scraping of funds")
 	return nil
+}
+
+func ScrapeHistoricalPrices(client *scraper.Client, db *database.DB) error {
+	log.Println("Scraping Historical prices...")
+
+	url := "https://funds.profiledata.co.za/aci/ASISA/LatestPrices.aspx"
+
+	byteBody, err := client.Get(url)
+	if err != nil {
+		return fmt.Errorf("error getting latest price page: %s", err)
+	}
+
+	currentPriceDate, err := scraper.ScrapeCurrentPriceAndCostData(byteBody)
+	if err != nil {
+		return fmt.Errorf("error parsing scraped html: %s", err)
+	}
+
+	log.Printf("Scraped %d fund classes from prices page \n", len(currentPriceDate))
+
+	matchedCount := 0
+	unmatchedFunds := make([]string, 0)
+	savedPrices := 0
+	savedCosts := 0
+
+	for _, data := range currentPriceDate {
+		fundID, matchedName, err := db.FuzzyMatchFundName(data.FundClass.FundName)
+		if err != nil {
+			return fmt.Errorf("error fuzzy matching for fund: %s, %s", data.FundClass.FundName, err)
+		}
+
+		if fundID == 0 {
+			unmatchedFunds = append(unmatchedFunds, fmt.Sprintf("%s %s", data.FundClass.FundName, data.FundClass.ClassName))
+			continue
+		}
+
+		if matchedName != data.FundClass.FundName {
+			log.Printf("Fuzzy Matched: %s -> %s \n", data.FundClass.FundName, matchedName)
+		}
+
+		matchedCount++
+		data.FundClass.FundID = fundID
+
+		if err := db.SaveFundClass(data.FundClass); err != nil {
+			log.Printf("Error saving fund class for %s %s: %v\n",
+				data.FundClass.FundName, data.FundClass.ClassName, err)
+			continue
+		}
+
+		if data.Costs.TICDate != nil {
+			data.Costs.FundClassID = data.FundClass.ID
+			if err := db.SaveFundClassCosts(data.Costs); err != nil {
+				log.Printf("Error saving costs for %s %s: %v\n",
+					data.FundClass.FundName, data.FundClass.ClassName, err)
+			} else {
+				savedCosts++
+			}
+		}
+
+		if data.Price.PriceDate != nil && data.Price.NAV != nil {
+			data.Price.FundClassID = data.FundClass.ID
+			if err := db.SaveFundClassPrice(data.Price); err != nil {
+				log.Printf("Error saving price for %s %s: %v\n",
+					data.FundClass.FundName, data.FundClass.ClassName, err)
+			} else {
+				savedPrices++
+			}
+		}
+	}
+
+	fmt.Println(strings.Repeat("=", 80))
+	fmt.Println("The following are considered unmatched...")
+
+	for i, fund := range unmatchedFunds {
+		fmt.Printf("Fund %d: %s\n", i, fund)
+	}
+
+	return nil
+
 }
