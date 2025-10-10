@@ -15,11 +15,22 @@ func (db *DB) SaveFundClass(fundClass *models.FundClass) error {
 			add_fee = EXCLUDED.add_fee,
 			max_init_fee = EXCLUDED.max_init_fee,
 			category = EXCLUDED.category
+		RETURNING id
 	`
 
-	_, err := db.conn.NamedExec(query, fundClass)
+	rows, err := db.conn.NamedQuery(query, fundClass)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
 
-	return err
+	if rows.Next() {
+		if err := rows.Scan(&fundClass.ID); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func (db *DB) SaveFundClassCosts(fundClassCost *models.FundClassCost) error {
